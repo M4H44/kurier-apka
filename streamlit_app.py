@@ -5,7 +5,7 @@ from PIL import Image
 
 st.set_page_config(page_title="Kuriér Scan", page_icon="🚛")
 
-# Inicializácia čítačky (Slovenčina + Čeština)
+# Spustenie čítačky (Slovenčina + Čeština)
 @st.cache_resource
 def load_reader():
     return easyocr.Reader(['sk', 'cs'])
@@ -15,29 +15,50 @@ reader = load_reader()
 st.title("🚛 Inteligentný Rozpis")
 st.write("Vodič: **Martin Huťka**")
 
-foto = st.camera_input("📸 Odfotiť rozpis")
+# --- POLÍČKO PRE VÝBER Z GALÉRIE ---
+st.subheader("1. Vyber fotku z pamäte")
+foto_galeria = st.file_uploader("Klikni sem a vyber fotku rozpisu", type=["jpg", "jpeg", "png"])
 
-if foto:
-    # Prevod fotky na formát, ktorému rozumie AI
-    img = Image.open(foto)
+# --- POLÍČKO PRE FOŤÁK ---
+st.subheader("2. Alebo odfotografuj")
+foto_kamera = st.camera_input("Odfotiť teraz")
+
+# Ktorú fotku ideme spracovať?
+finalna_fotka = foto_galeria if foto_galeria else foto_kamera
+
+if finalna_fotka:
+    img = Image.open(finalna_fotka)
     img_np = np.array(img)
     
-    with st.spinner('Čítam papier...'):
+    with st.spinner('Umelá inteligencia číta papier...'):
+        # EasyOCR prečíta text
         vysledok = reader.readtext(img_np, detail=0)
     
-    st.subheader("Nájdený text na papieri:")
+    st.divider()
+    st.subheader("🔍 Našiel som tento text:")
     
-    # Tu filter, ktorý hľadá mestá alebo firmy
-    # Pre začiatok ti vypíšeme všetko, čo to našlo
-    for riadok in vysledok:
-        st.write(f"🔍 {riadok}")
+    # Spojíme nájdený text do jedného celku
+    vsetok_text = " ".join(vysledok)
+    st.write(vsetok_text)
     
-    # Tvorba trasy z nájdených slov
-    # (Ak program nájde známe mestá, pridá ich do linku)
-    mesta = ["Bytča", "Považská", "Hradiště", "Žilina", "Bratislava"]
-    najdene_zastavky = [s for s in vysledok if any(m in s for m in mesta)]
+    # Zoznam miest, ktoré má apka hľadať v texte
+    mesta_zoznam = ["Bytča", "Považská", "Hradiště", "Žilina", "Bratislava", "Trenčín", "Nové Mesto", "Uherské"]
     
+    najdene_zastavky = []
+    for m in mesta_zoznam:
+        if m.lower() in vsetok_text.lower():
+            najdene_zastavky.append(m)
+    
+    # Odstránenie duplicít (ak nájde Bytča viackrát)
+    najdene_zastavky = list(dict.fromkeys(najdene_zastavky))
+
     if najdene_zastavky:
+        st.success(f"Rozpoznané zastávky: {', '.join(najdene_zastavky)}")
+        # Vygenerovanie odkazu pre Google Maps
+        # Pridáme Kovex na začiatok
         trasa = ["Kovex Žilina"] + najdene_zastavky
         link = "https://www.google.com/maps/dir/" + "/".join(trasa).replace(" ", "+")
-        st.link_button("🗺️ OTVORIŤ TRASU", link)
+        
+        st.link_button("🗺️ OTVORIŤ NAVIGÁCIU", link)
+    else:
+        st.warning("V texte som nenašiel žiadne známe mestá. Skús vybrať inú fotku.")
