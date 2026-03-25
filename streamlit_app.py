@@ -5,13 +5,13 @@ from PIL import Image
 
 st.set_page_config(page_title="Martin Huťka - Rozpis", page_icon="🚛")
 
-# --- TVOJ SLOVNÍK (Kľúč : Adresa pre Google Maps) ---
+# --- SLOVNÍK FIRIEM (Iba tie, ktoré naozaj jazdíš) ---
 slovnik_firiem = {
     "solmark": "Solmark, Robotnícka 4351, Považská Bystrica",
-    "hajdu": "RKS Trenčín s.r.o, Súvoz 1/37, Kubrá, Trenčín",
-    "koval": "KOVAL SYSTEMS, a. s., Krížna 950/10, Beluša",
     "steelcom": "STEELCOM. SK, Továrenská 4203, Dubnica nad Váhom",
-    "mitice": "Trenčianske Mitice 913 22"
+    "mitice": "Trenčianske Mitice 913 22",
+    "koval": "KOVAL SYSTEMS, a. s., Krížna 950/10, Beluša",
+    # Sem môžeš dopísať ďalšie SVOJE firmy, ak sa objavia na papieri
 }
 
 @st.cache_resource
@@ -20,52 +20,51 @@ def load_reader():
 
 reader = load_reader()
 
-st.title("🚛 Rozpis pre Martina Huťku")
+st.title("🚛 Rozpis: Martin Huťka")
 
-uploaded_file = st.file_uploader("📂 Nahraj fotku spoločného rozpisu", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("📂 Nahraj rozpis", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
     img = Image.open(uploaded_file)
     img_np = np.array(img)
     
-    with st.spinner('Filtrujem tvoje zastávky...'):
+    with st.spinner('Filtrujem tvoj rozpis...'):
         vysledok = reader.readtext(img_np, detail=0)
     
-    # --- LOGIKA: HĽADÁME LEN TVOJU ČASŤ ---
     moje_zastavky = []
-    som_v_mojej_sekcii = False
+    som_v_sekcii_martin = False
     
+    # Zoznam mien, ktoré ukončujú tvoju sekciu
+    ostatni_vodici = ["michal fusko", "milan svitek", "juraj hriník", "fusko", "svitek", "hrinik"]
+
     for riadok in vysledok:
         text = riadok.lower()
         
-        # Ak narazíme na tvoje meno, začíname pridávať
-        if "martin huťka" in text:
-            som_v_mojej_sekcii = True
+        # Zapni čítanie len pre Martina
+        if "martin huťka" in text or "hutka" in text:
+            som_v_sekcii_martin = True
             continue
             
-        # Ak narazíme na iné meno, končíme (aby nebralo Bratislavu iným)
-        if som_v_mojej_sekcii and any(meno in text for meno in ["michal fusko", "milan svitek", "juraj hriník"]):
-            som_v_mojej_sekcii = False
+        # Vypni čítanie, ak príde iné meno (aby nebralo cudzí Trenčín/Belušu)
+        if som_v_sekcii_martin and any(meno in text for meno in ostatni_vodici):
+            som_v_sekcii_martin = False
             break
             
-        # Ak sme v tvojej sekcii, hľadáme firmy zo slovníka
-        if som_v_mojej_sekcii:
+        # Ak sme v správnej sekcii, hľadaj firmy
+        if som_v_sekcii_martin:
             for kluc, adresa in slovnik_firiem.items():
                 if kluc in text and adresa not in moje_zastavky:
                     moje_zastavky.append(adresa)
 
     if moje_zastavky:
-        st.success(f"📍 Našiel som {len(moje_zastavky)} tvojich zastávok")
-        
+        st.success(f"📍 Našiel som {len(moje_zastavky)} zastávky pre Martina Huťku")
         for i, z in enumerate(moje_zastavky, 1):
             st.write(f"{i}. **{z}**")
         
-        # Trasa: Štart -> tvoje firmy v poradí ako sú na papieri
-        trasa = ["Pracovisko (KOVEX)"] + moje_zastavky
-        link = "https://www.google.com/maps/dir/" + "/".join(trasa).replace(" ", "+")
-        st.link_button("🚀 OTVORIŤ MOJU NAVIGÁCIU", link)
+        link = "https://www.google.com/maps/dir/" + "/".join(["KOVEX Žilina"] + moje_zastavky).replace(" ", "+")
+        st.link_button("🚀 SPUSTIŤ MOJU NAVIGÁCIU", link)
     else:
-        st.warning("Nenašiel som v sekcii 'Martin Huťka' žiadne známe firmy.")
+        st.warning("Nenašiel som pod tvojím menom žiadne známe firmy.")
 
-    with st.expander("Kontrola celého papiera"):
+    with st.expander("Kontrola celého textu (Surové dáta)"):
         st.write(vysledok)
