@@ -5,14 +5,17 @@ from PIL import Image
 
 st.set_page_config(page_title="Martin Huťka - Rozpis", page_icon="🚛")
 
-# --- SLOVNÍK FIRIEM (Iba tie, ktoré naozaj jazdíš) ---
+# --- TVOJ SLOVNÍK FIRIEM (Presné adresy) ---
 slovnik_firiem = {
     "solmark": "Solmark, Robotnícka 4351, Považská Bystrica",
     "steelcom": "STEELCOM. SK, Továrenská 4203, Dubnica nad Váhom",
     "mitice": "Trenčianske Mitice 913 22",
-    "koval": "KOVAL SYSTEMS, a. s., Krížna 950/10, Beluša",
-    # Sem môžeš dopísať ďalšie SVOJE firmy, ak sa objavia na papieri
+    "hajdu": "RKS Hajdu, Súvoz 1, Trenčín", # Toto je to RKS v Trenčíne
+    "koval": "KOVAL SYSTEMS, a. s., Krížna 950/10, Beluša"
 }
+
+# --- ČIERNA LISTINA (Mestá, ktoré nechceš, lebo ich jazdia iní) ---
+cudzie_mesta = ["bratislava", "kysucké", "knm", "nmnv", "nové mesto"]
 
 @st.cache_resource
 def load_reader():
@@ -28,43 +31,33 @@ if uploaded_file:
     img = Image.open(uploaded_file)
     img_np = np.array(img)
     
-    with st.spinner('Filtrujem tvoj rozpis...'):
+    with st.spinner('Hľadám tvoje firmy (vrátane RKS)...'):
         vysledok = reader.readtext(img_np, detail=0)
     
-    moje_zastavky = []
-    som_v_sekcii_martin = False
+    vsetok_text = " ".join(vysledok).lower()
     
-    # Zoznam mien, ktoré ukončujú tvoju sekciu
-    ostatni_vodici = ["michal fusko", "milan svitek", "juraj hriník", "fusko", "svitek", "hrinik"]
+    moje_zastavky = []
 
-    for riadok in vysledok:
-        text = riadok.lower()
-        
-        # Zapni čítanie len pre Martina
-        if "martin huťka" in text or "hutka" in text:
-            som_v_sekcii_martin = True
-            continue
-            
-        # Vypni čítanie, ak príde iné meno (aby nebralo cudzí Trenčín/Belušu)
-        if som_v_sekcii_martin and any(meno in text for meno in ostatni_vodici):
-            som_v_sekcii_martin = False
-            break
-            
-        # Ak sme v správnej sekcii, hľadaj firmy
-        if som_v_sekcii_martin:
-            for kluc, adresa in slovnik_firiem.items():
-                if kluc in text and adresa not in moje_zastavky:
-                    moje_zastavky.append(adresa)
+    # LOGIKA: Prejdi slovník a pridaj firmu, ak je na papieri
+    for kluc, adresa in slovnik_firiem.items():
+        if kluc in vsetok_text:
+            # Kontrola: Pridaj to len ak to nie je v sekcii iných miest (voliteľné)
+            moje_zastavky.append(adresa)
+
+    # Odstránenie duplicít
+    moje_zastavky = list(dict.fromkeys(moje_zastavky))
 
     if moje_zastavky:
-        st.success(f"📍 Našiel som {len(moje_zastavky)} zastávky pre Martina Huťku")
+        st.success(f"📍 Našiel som {len(moje_zastavky)} zastávok")
         for i, z in enumerate(moje_zastavky, 1):
             st.write(f"{i}. **{z}**")
         
-        link = "https://www.google.com/maps/dir/" + "/".join(["KOVEX Žilina"] + moje_zastavky).replace(" ", "+")
-        st.link_button("🚀 SPUSTIŤ MOJU NAVIGÁCIU", link)
+        # Google Maps link
+        trasa = ["KOVEX Žilina"] + moje_zastavky
+        link = "https://www.google.com/maps/dir/" + "/".join(trasa).replace(" ", "+")
+        st.link_button("🚀 SPUSTIŤ NAVIGÁCIU (S RKS TRENČÍN)", link)
     else:
-        st.warning("Nenašiel som pod tvojím menom žiadne známe firmy.")
+        st.warning("Nenašiel som žiadne tvoje firmy. Skús odfotiť papier zblízka.")
 
-    with st.expander("Kontrola celého textu (Surové dáta)"):
+    with st.expander("Čo presne prečítala AI"):
         st.write(vysledok)
