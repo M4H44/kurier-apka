@@ -3,22 +3,15 @@ import easyocr
 import numpy as np
 from PIL import Image
 
-st.set_page_config(page_title="Kuriér Pro", page_icon="🚛")
+st.set_page_config(page_title="Martin Huťka - Rozpis", page_icon="🚛")
 
-# --- SLOVNÍK: Kľúčové slovo : (Mesto, Celý názov/Adresa pre Maps) ---
-slovnik_cieľov = {
-    "solmark": ("považská bystrica", "Solmark, Robotnícka 4351, Považská Bystrica"),
-    "hajdu": ("trenčín", "RKS Hajdu, Trenčín"),
-    "koval": ("beluša", "Koval Systems, Krížna 950, Beluša"),
-    "steelcom": ("dubnica", "Steelcom, Dubnica nad Váhom"),
-    "mitice": ("mitice", "Trenčianske Mitice"),
-    "nmnv": ("nové mesto", "Nové Mesto nad Váhom"),
-    "knm": ("kysucké nové mesto", "Kysucké Nové Mesto"),
-    "pb": ("považská bystrica", "Považská Bystrica"),
-    "beluša": ("beluša", "Beluša"),
-    "dubnica": ("dubnica", "Dubnica nad Váhom"),
-    "bytča": ("bytča", "Bytča"),
-    "ba": ("bratislava", "Bratislava")
+# --- TVOJ SLOVNÍK (Kľúč : Adresa pre Google Maps) ---
+slovnik_firiem = {
+    "solmark": "Solmark, Robotnícka 4351, Považská Bystrica",
+    "hajdu": "RKS Trenčín s.r.o, Súvoz 1/37, Kubrá, Trenčín",
+    "koval": "KOVAL SYSTEMS, a. s., Krížna 950/10, Beluša",
+    "steelcom": "STEELCOM. SK, Továrenská 4203, Dubnica nad Váhom",
+    "mitice": "Trenčianske Mitice 913 22"
 }
 
 @st.cache_resource
@@ -27,45 +20,52 @@ def load_reader():
 
 reader = load_reader()
 
-st.title("🚛 Kuriér Pro: Inteligentný Skener")
-st.write("Vodič: **Martin Huťka**")
+st.title("🚛 Rozpis pre Martina Huťku")
 
-uploaded_file = st.file_uploader("📂 Nahraj fotku rozpisu", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("📂 Nahraj fotku spoločného rozpisu", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
     img = Image.open(uploaded_file)
     img_np = np.array(img)
     
-    with st.spinner('Umelá inteligencia číta papier...'):
+    with st.spinner('Filtrujem tvoje zastávky...'):
         vysledok = reader.readtext(img_np, detail=0)
     
-    vsetok_text = " ".join(vysledok).lower()
-    st.divider()
-
-    najdene_mesta = set()
-    finalne_adresy = []
-
-    # 1. NAJPRV hľadáme konkrétne firmy (Koval, Solmark atď.)
-    # Zoradíme slovník tak, aby firmy boli prvé (dlhšie/špecifickejšie kľúče)
-    for kľúč in sorted(slovnik_cieľov.keys(), key=len, reverse=True):
-        mesto, adresa = slovnik_cieľov[kľúč]
-        if kľúč in vsetok_text:
-            # Ak ešte v tomto meste nemáme zastávku, pridáme ju
-            if mesto not in najdene_mesta:
-                finalne_adresy.append(adresa)
-                najdene_mesta.add(mesto)
-
-    if finalne_adresy:
-        st.success(f"📍 Naplánovaná trasa ({len(finalne_adresy)} zastávok)")
-        for a in finalne_adresy:
-            st.write(f"✅ {a}")
+    # --- LOGIKA: HĽADÁME LEN TVOJU ČASŤ ---
+    moje_zastavky = []
+    som_v_mojej_sekcii = False
+    
+    for riadok in vysledok:
+        text = riadok.lower()
         
-        # Google Maps trasa
-        trasa = ["Kovex Žilina"] + finalne_adresy
-        link = "https://www.google.com/maps/dir/" + "/".join(trasa).replace(" ", "+")
-        st.link_button("🚀 OTVORIŤ VYČISTENÚ NAVIGÁCIU", link)
-    else:
-        st.warning("Nenašiel som žiadne známe ciele.")
+        # Ak narazíme na tvoje meno, začíname pridávať
+        if "martin huťka" in text:
+            som_v_mojej_sekcii = True
+            continue
+            
+        # Ak narazíme na iné meno, končíme (aby nebralo Bratislavu iným)
+        if som_v_mojej_sekcii and any(meno in text for meno in ["michal fusko", "milan svitek", "juraj hriník"]):
+            som_v_mojej_sekcii = False
+            break
+            
+        # Ak sme v tvojej sekcii, hľadáme firmy zo slovníka
+        if som_v_mojej_sekcii:
+            for kluc, adresa in slovnik_firiem.items():
+                if kluc in text and adresa not in moje_zastavky:
+                    moje_zastavky.append(adresa)
 
-    with st.expander("Surové dáta pre kontrolu"):
+    if moje_zastavky:
+        st.success(f"📍 Našiel som {len(moje_zastavky)} tvojich zastávok")
+        
+        for i, z in enumerate(moje_zastavky, 1):
+            st.write(f"{i}. **{z}**")
+        
+        # Trasa: Štart -> tvoje firmy v poradí ako sú na papieri
+        trasa = ["Pracovisko (KOVEX)"] + moje_zastavky
+        link = "https://www.google.com/maps/dir/" + "/".join(trasa).replace(" ", "+")
+        st.link_button("🚀 OTVORIŤ MOJU NAVIGÁCIU", link)
+    else:
+        st.warning("Nenašiel som v sekcii 'Martin Huťka' žiadne známe firmy.")
+
+    with st.expander("Kontrola celého papiera"):
         st.write(vysledok)
