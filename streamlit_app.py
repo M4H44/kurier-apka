@@ -2,43 +2,35 @@ import streamlit as st
 import easyocr
 import numpy as np
 from PIL import Image
-import difflib
 
 st.set_page_config(page_title="Kuriér Pro", page_icon="🚛")
 
-# 1. TVOJ SLOVNÍK SKRATIEK A FIRIEM (Tu pridávaj ďalšie, ktoré jazdíš)
-prekladovy_slovnik = {
-    "PB": "Považská Bystrica",
-    "KNM": "Kysucké Nové Mesto",
-    "NMnV": "Nové Mesto nad Váhom",
-    "BA": "Bratislava",
-    "Solmark": "Solmark Považská Bystrica",
-    "Steelcom": "Steelcom Dubnica nad Váhom",
-    "Koval": "Koval Beluša",
-    "Teckon": "Teckon Bytča",
-    "Mitice": "Trenčianske Mitice",
-    "Hradiště": "Uherské Hradiště"
+# --- SLOVNÍK: Kľúčové slovo : (Mesto, Celý názov/Adresa pre Maps) ---
+slovnik_cieľov = {
+    "solmark": ("považská bystrica", "Solmark, Robotnícka 4351, Považská Bystrica"),
+    "hajdu": ("trenčín", "RKS Hajdu, Trenčín"),
+    "koval": ("beluša", "Koval Systems, Krížna 950, Beluša"),
+    "steelcom": ("dubnica", "Steelcom, Dubnica nad Váhom"),
+    "mitice": ("mitice", "Trenčianske Mitice"),
+    "nmnv": ("nové mesto", "Nové Mesto nad Váhom"),
+    "knm": ("kysucké nové mesto", "Kysucké Nové Mesto"),
+    "pb": ("považská bystrica", "Považská Bystrica"),
+    "beluša": ("beluša", "Beluša"),
+    "dubnica": ("dubnica", "Dubnica nad Váhom"),
+    "bytča": ("bytča", "Bytča"),
+    "ba": ("bratislava", "Bratislava")
 }
-
-# 2. DATABÁZA OBCÍ (Zoznam pre všeobecné hľadanie)
-@st.cache_data
-def load_all_towns():
-    # Sem budeme postupne pridávať všetko, čo potrebuješ
-    return ["Žilina", "Bytča", "Beluša", "Dubnica nad Váhom", "Trenčín", "Púchov", "Ilava"]
-
-vsetky_obce = load_all_towns()
 
 @st.cache_resource
 def load_reader():
-    # gpu=False zaistí, že to na Streamlite nezamrzne
     return easyocr.Reader(['sk', 'cs'], gpu=False)
 
 reader = load_reader()
 
-st.title("🚛 Kuriér Pro: SK/CZ Skener")
+st.title("🚛 Kuriér Pro: Inteligentný Skener")
 st.write("Vodič: **Martin Huťka**")
 
-uploaded_file = st.file_uploader("📂 Nahraj rozpis (z galérie alebo foťáku)", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("📂 Nahraj fotku rozpisu", type=["jpg", "jpeg", "png"])
 
 if uploaded_file:
     img = Image.open(uploaded_file)
@@ -47,38 +39,33 @@ if uploaded_file:
     with st.spinner('Umelá inteligencia číta papier...'):
         vysledok = reader.readtext(img_np, detail=0)
     
-    vsetok_text = " ".join(vysledok)
+    vsetok_text = " ".join(vysledok).lower()
     st.divider()
 
-    # --- HLAVNÁ LOGIKA HĽADANIA ---
-    najdene_do_mapy = []
-    
-    # Rozdelíme text na slová a čistíme ich od bodiek a čiarok
-    slova_z_papiera = vsetok_text.replace(",", " ").replace(":", " ").replace(".", " ").split()
-    
-    for slovo in slova_z_papiera:
-        # A. Skúsime nájsť slovo v našom slovníku skratiek (napr. "PB")
-        if slovo in prekladovy_slovnik:
-            najdene_do_mapy.append(prekladovy_slovnik[slovo])
-        
-        # B. Ak to nie je v slovníku, skúsime nájsť podobnú obec v databáze
-        else:
-            zhoda = difflib.get_close_matches(slovo, vsetky_obce, n=1, cutoff=0.8)
-            if zhoda:
-                najdene_do_mapy.append(zhoda[0])
-    
-    # Odstránenie duplicít
-    najdene_do_mapy = list(dict.fromkeys(najdene_do_mapy))
+    najdene_mesta = set()
+    finalne_adresy = []
 
-    if najdene_do_mapy:
-        st.success(f"📍 Rozpoznané ciele: {', '.join(najdene_do_mapy)}")
+    # 1. NAJPRV hľadáme konkrétne firmy (Koval, Solmark atď.)
+    # Zoradíme slovník tak, aby firmy boli prvé (dlhšie/špecifickejšie kľúče)
+    for kľúč in sorted(slovnik_cieľov.keys(), key=len, reverse=True):
+        mesto, adresa = slovnik_cieľov[kľúč]
+        if kľúč in vsetok_text:
+            # Ak ešte v tomto meste nemáme zastávku, pridáme ju
+            if mesto not in najdene_mesta:
+                finalne_adresy.append(adresa)
+                najdene_mesta.add(mesto)
+
+    if finalne_adresy:
+        st.success(f"📍 Naplánovaná trasa ({len(finalne_adresy)} zastávok)")
+        for a in finalne_adresy:
+            st.write(f"✅ {a}")
         
-        # Vygenerovanie Google Maps trasy
-        trasa = ["Kovex Žilina"] + najdene_do_mapy
+        # Google Maps trasa
+        trasa = ["Kovex Žilina"] + finalne_adresy
         link = "https://www.google.com/maps/dir/" + "/".join(trasa).replace(" ", "+")
-        st.link_button("🚀 OTVORIŤ NAVIGÁCIU", link)
+        st.link_button("🚀 OTVORIŤ VYČISTENÚ NAVIGÁCIU", link)
     else:
-        st.warning("V texte som nenašiel žiadnu známu firmu ani obec.")
+        st.warning("Nenašiel som žiadne známe ciele.")
 
-    with st.expander("Surové dáta z papiera (čo vidí AI)"):
+    with st.expander("Surové dáta pre kontrolu"):
         st.write(vysledok)
